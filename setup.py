@@ -5,7 +5,7 @@ import sys
 from setuptools import setup, find_packages
 
 # Bump pyglet/__init__.py version as well.
-VERSION = '1.3.0a1'
+VERSION = '1.3.0b1'
 
 long_description = '''pyglet provides an object-oriented programming
 interface for developing games and other visually-rich applications
@@ -38,7 +38,7 @@ setup_info = dict(
     version=VERSION,
     author='Alex Holkner',
     author_email='Alex.Holkner@gmail.com',
-    url='http://pyglet.readthedocs.org/en/latest/',
+    url='http://pyglet.readthedocs.org/en/pyglet-1.3-maintenance/',
     download_url='http://pypi.python.org/pypi/pyglet',
     description='Cross-platform windowing and multimedia library',
     long_description=long_description,
@@ -59,6 +59,8 @@ setup_info = dict(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
         'Topic :: Games/Entertainment',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
