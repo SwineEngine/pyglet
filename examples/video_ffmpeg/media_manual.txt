@@ -1,0 +1,202 @@
+Pyglet media player documentation
+
+TOC
+    Domain knowledge
+    Current code architecture
+    Current problems
+    Proposed solution
+    Helpful tools
+    Convert video to mkv
+
+Domain knowledge
+================
+This tutorial http://dranger.com/ffmpeg/ffmpeg.html is a good intro for
+building some domain knowledge. Bear in mind that the tutorial is rather old,
+and some ffmpeg functions have become deprecated - but the basics are still
+valid.
+
+In the FFmpeg base code there is the ffplay.c player - a very
+good way to see how things are managed. In particular, some newer
+FFmpeg functions are used, while current pyglet media code
+still uses functions that have now been deprecated.
+
+Current code architecture
+=========================
+The overview of the media code is the following:
+
+Source
+------
+Found in media/sources folder.
+
+`Source`s represent data containing media information. They can
+come from disk or be created in memory. A Sources' responsibility is to read
+data into and provide audio and/or video data out of its stream. Essentially,
+it's a *producer*. One implementation of a `StreamingSource` is `FFmpegSource`.
+It implements the `Source` base class by calling functions
+found in media/sources/av.py which offer basic functionalities for
+handling media streams, such as opening a file, reading stream info,
+reading a packet, and decoding audio and video packets.
+
+Player
+------
+Found in media/player.py
+
+The player is the main object that drives the source. It maintains a queue of
+sources that it can play sequentially. Its responsibilities are to play, pause
+and seek into the source.
+
+If the source contains audio, the Player will instantiate an `AudioPlayer` by
+asking the `SoundDriver` to create an appropriate `AudioPlayer` for the given
+platform. The `AudioDriver` is a singleton created according to which drivers
+are available. Currently supported sound drivers are: DirectSound, Pulse and
+AudioAL.
+
+Finally, if the source contains video, the Player has a `texture` property
+with the current video frame.
+
+AudioPlayer
+-----------
+Found in media/drivers
+
+The `AudioPlayer` is responsible only for the audio data. It can read, pause,
+and seek into the `Source` - and can report the current audio time.
+
+In order to accomplish these tasks, the audio player keeps a reference to the
+`AudioDriver` singleton.
+
+AudioDriver
+-----------
+Found in media/drivers
+
+The AudioDriver is a wrapper around the low-level sound driver available
+on the platform. It's a singleton. It can create an `AudioPlayer` appropriate
+for the current `AudioDriver`.
+
+It contains a `PlayerWorker` which is responsible for constantly filling up
+all created `AudioPlayer` sound buffers using their `Source` data. It is
+implemented using a Thread that iterates over each player and fills its
+corresponding sound buffer. Just as the `AudioBuffer` is a singleton - so is
+this `PlayerWorker`. `PlayerWorker`s normal state is to sleep. When a given
+`Player` plays, it adds its `AudioPlayer` to the `PlayerWorker` set of players.
+This add action wakes up the Thread which starts repeatedly filling the
+`AudioPlayer` sound buffer.
+
+Normal operation of the `Player`
+--------------------------------
+The client code instantiates a media player this way:
+
+```python
+player = pyglet.media.Player()
+source = pyglet.media.load(filename)
+player.queue(source)
+player.play()
+```
+When the client code runs `player.play()`:
+
+If audio data is required by the `AudioPlayer`, it will ask its `Source` to
+check the buffered audio data queue for available audio data. If the queue is
+empty, it will read the next packet from the stream. There's no guarantee
+that the next packet read will be an audio packet - it could be a video packet.
+
+If the packet is a video frame, the source will place the packet in its video
+queue and launch a Thread to decode the video packet. Once the Thread finishes
+decoding the video packet, it will attach the resulting texture to the packet
+`image` attribute.
+
+If the packet is an audio packet, it will immediately be decoded and added to
+the buffered audio data queue.
+
+
+Here's a little more detail on what's going on with audio/video decoding:
+
+1. The player starts by checking if the media has some audio.
+   If so, it will also check if it already has an existing `AudioPlayer`.
+   In this case it hasn't been playing anything yet - so it will get the global
+   `SoundDriver` and ask it to instantiate a new `AudioPlayer`.
+
+2. The newly created `AudioPlayer` will run its `play` code and place itself in
+   the `SoundDriver`'s `PlayerWorker` set of players.  This action
+   wakes up the Thread.
+
+3. The `PlayerWorker` Thread will iterate over this single audio player
+   in the set and ask it to refill its audio buffer until it's full. The
+   Thread then sleeps a bit.
+
+4. On waking, the Thread checks to see if there is enough empty space in
+   the audio player sound buffer to trigger another refill.
+
+5. After calling the `play` method of its `AudioPlayer`, the Player then
+   schedules its `update_texture` method in the pyglet event loop.
+
+6. The `update_texture` method is responsible for retrieving the next video
+   image and synchronizing that image with the accompanying audio. It achieves
+   this goal by asking the `AudioPlayer`for the current audio time - comparing
+   this `AudioPlayer` time with the timestamp on the retrieved next video image.
+
+7. The Player then reschedules itself with any needed time delay in order to
+   update the `texture` property. If for some reason the next video image
+   timestamp is in the past (behind the current audio time), that image is
+   skipped until an image with a closer matching timestamp is found.
+
+
+Current problem
+================
+
+The media player has some noticible stuttering - especially on Linux platforms.
+Tests on the Windows platform already show that DirectSound doesn't provide a
+consistent audio time - which causes audio and video to fall out of sync. Frames
+are then skipped, and this creates unpleasant visual effects.
+
+
+Proposed solution
+=================
+
+Ideally, an external master clock would be created to synchronize
+both the video and the audio play. There is already existing code for playing
+video without audio data: `SilentTimeAudioPlayer` found in
+media/drivers/silent.py.
+
+As a first step,  I'd make the video synchronize with the proposed master clock
+andleave the audio untouched. I'd then work on synchronizing the audio with the
+master clock as a second step.
+
+It's easy enough to synchronize video with the master clock as it's only a
+matter of delaying the video texture enough to match its timestamp with the
+master clock.
+
+Audio synchronizing is a bit more difficult - we cannot pause nor
+make the audio go faster. There is a FFmpeg function called
+`swr_set_compensation` which would allow the decoded audio to be slightly
+shorter or longer (clipped or padded) depending on what is needed.
+
+
+Helpful tools
+=============
+I've found that using the binary ffprobe is a good way to explore the content
+of a media file. Here's a couple of things which might be
+interesting and helpful:
+
+ffprobe samples_v1.01\SampleVideo_320x240_1mb.3gp -show_frames
+
+This will show information about each frame in the file.
+You can choose only audio or only video frames by using
+the `v` flag for video and `a` for audio.:
+
+ffprobe samples_v1.01\SampleVideo_320x240_1mb.3gp -show_frames -select_streams v
+
+
+You can also ask to see a subset of frame information this way:
+
+ffprobe samples_v1.01\SampleVideo_320x240_1mb.3gp -show_frames
+-select_streams v -show_entries frame=pkt_pts,pict_type
+
+Finally, you can get a more compact view with the additional 'compact' flag:
+
+ffprobe samples_v1.01\SampleVideo_320x240_1mb.3gp -show_frames
+-select_streams v -show_entries frame=pkt_pts,pict_type -of compact
+
+Convert video to mkv
+====================
+ffmpeg -i <original_video> -c:v libx264 -preset slow -profile:v high -crf 18 
+-coder 1 -pix_fmt yuv420p -movflags +faststart -g 30 -bf 2 -c:a aac -b:a 384k 
+-profile:a aac_low <outputfilename.mkv>

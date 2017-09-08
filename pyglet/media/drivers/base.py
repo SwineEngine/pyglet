@@ -32,12 +32,18 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ----------------------------------------------------------------------------
 from abc import ABCMeta, abstractmethod
+import math
 from future.utils import with_metaclass
 
 
 class AbstractAudioPlayer(with_metaclass(ABCMeta, object)):
     """Base class for driver audio players.
     """
+
+    # Audio synchronization constants
+    AUDIO_DIFF_AVG_NB = 20
+    # no audio correction is done if too big error
+    AV_NOSYNC_THRESHOLD = 10.0
 
     def __init__(self, source_group, player):
         """Create a new audio player.
@@ -51,6 +57,12 @@ class AbstractAudioPlayer(with_metaclass(ABCMeta, object)):
         """
         self.source_group = source_group
         self.player = player
+
+        # Audio synchronization
+        self.audio_diff_avg_count = 0
+        self.audio_diff_cum = 0.0
+        self.audio_diff_avg_coef = math.exp(math.log10(0.01) / self.AUDIO_DIFF_AVG_NB)
+        self.audio_diff_threshold = 0.1 # Experimental. ffplay computes it differently
 
     @abstractmethod
     def play(self):
@@ -84,6 +96,14 @@ class AbstractAudioPlayer(with_metaclass(ABCMeta, object)):
         """
 
     @abstractmethod
+    def seek(self, timestamp):
+        """Seek forward the source until timestamp is found.
+
+        All audio packets found before are discarded. All video packets found
+        are queued for decoding.
+        """
+
+    @abstractmethod
     def get_time(self):
         """Return approximation of current playback time within current source.
 
@@ -94,6 +114,42 @@ class AbstractAudioPlayer(with_metaclass(ABCMeta, object)):
         :return: current play cursor time, in seconds.
         """
         # TODO determine which source within group
+
+    @abstractmethod
+    def prefill_audio(self):
+        """Prefill the audio buffer with audio data.
+
+        This method is called before the audio player starts in order to 
+        reduce the time it takes to fill the whole audio buffer.
+        """
+
+    def get_audio_time_diff(self):
+        """Queries the time difference between the audio time and the `Player`
+        master clock.
+
+        The time difference returned is calculated using a weighted average on
+        previous audio time differences. The algorithms will need at least 20
+        measurements before returning a weighted average.
+
+        :rtype: float
+        :return: weighted average difference between audio time and master
+            clock from `Player`
+        """
+        audio_time = self.get_time() or 0
+        p_time = self.player.time
+        diff = audio_time - p_time
+        if abs(diff) < self.AV_NOSYNC_THRESHOLD:
+            self.audio_diff_cum = diff + self.audio_diff_cum * self.audio_diff_avg_coef
+            if self.audio_diff_avg_count < self.AUDIO_DIFF_AVG_NB:
+                self.audio_diff_avg_count += 1
+            else:
+                avg_diff = self.audio_diff_cum * (1 - self.audio_diff_avg_coef)
+                if abs(avg_diff) > self.audio_diff_threshold:
+                    return avg_diff
+        else:
+            self.audio_diff_avg_count = 0
+            self.audio_diff_cum = 0.0
+        return 0.0
 
     def set_volume(self, volume):
         """See `Player.volume`."""

@@ -89,7 +89,7 @@ class AudioFormat(object):
 class VideoFormat(object):
     """Video details.
 
-    An instance of this class is provided by sources with a video track.  You
+    An instance of this class is provided by sources with a video track. You
     should not modify the fields.
 
     Note that the sample aspect has no relation to the aspect ratio of the
@@ -106,9 +106,6 @@ class VideoFormat(object):
             Aspect ratio (width over height) of a single video pixel.
         `frame_rate` : float
             Frame rate (frames per second) of the video.
-
-            AVbin 8 or later is required, otherwise the frame rate will be
-            ``None``.
 
             .. versionadded:: 1.2.
 
@@ -340,12 +337,15 @@ class Source(object):
         Default implementation returns self."""
         return self
 
-    def get_audio_data(self, bytes):
+    def get_audio_data(self, bytes, compensation_time=0.0):
         """Get next packet of audio data.
 
         :Parameters:
             `bytes` : int
                 Maximum number of bytes of data to return.
+            `compensation_time` : float
+                Time in sec to compensate due to a difference between the
+                master clock and the audio clock.
 
         :rtype: `AudioData`
         :return: Next packet of audio data, or None if there is no (more)
@@ -425,7 +425,7 @@ class StaticSource(Source):
         if self._data is not None:
             return StaticMemorySource(self._data, self.audio_format)
 
-    def get_audio_data(self, bytes):
+    def get_audio_data(self, bytes, compensation_time=0.0):
         raise RuntimeError('StaticSource cannot be queued.')
 
 class StaticMemorySource(StaticSource):
@@ -451,7 +451,7 @@ class StaticMemorySource(StaticSource):
 
         self._file.seek(offset)
 
-    def get_audio_data(self, bytes):
+    def get_audio_data(self, bytes, compensation_time=0.0):
         offset = self._file.tell()
         timestamp = float(offset) / self.audio_format.bytes_per_second
 
@@ -541,12 +541,15 @@ class SourceGroup(object):
     :type: bool
     """)
 
-    def get_audio_data(self, bytes):
+    def get_audio_data(self, bytes, compensation_time=0.0):
         """Get next audio packet.
 
         :Parameters:
             `bytes` : int
                 Hint for preferred size of audio packet; may be ignored.
+            `compensation_time` : float
+                Time in sec to compensate due to a difference between the
+                master clock and the audio clock.
 
         :rtype: `AudioData`
         :return: Audio data, or None if there is no more data.
@@ -554,7 +557,7 @@ class SourceGroup(object):
 
         if not self._sources:
             return None
-        data = self._sources[0].get_audio_data(bytes)
+        data = self._sources[0].get_audio_data(bytes, compensation_time)
         eos = False
         while not data:
             eos = True
@@ -572,7 +575,7 @@ class SourceGroup(object):
                 else:
                     return None
 
-            data = self._sources[0].get_audio_data(bytes) # TODO method rename
+            data = self._sources[0].get_audio_data(bytes, player) # TODO method rename
 
         data.timestamp += self._timestamp_offset
         if eos:
