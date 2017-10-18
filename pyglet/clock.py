@@ -257,6 +257,7 @@ class Clock(_ClockBase):
 
         self._schedule_items = []
         self._schedule_interval_items = []
+        self._current_interval_item = None
 
     def update_time(self):
         """Get the elapsed time since the last call to `update_time`.
@@ -320,7 +321,7 @@ class Clock(_ClockBase):
 
         # NOTE: there is no special handling required to manage things
         #       that are scheduled during this loop, due to the heap
-        item = None
+        self._current_interval_item = item = None
         get_soft_next_ts = self._get_soft_next_ts
         while interval_items:
 
@@ -331,6 +332,11 @@ class Clock(_ClockBase):
                 item = heappop(interval_items)
             else:
                 item = heappushpop(interval_items, item)
+
+            # a scheduled function may try and unschedule itself
+            # so we need to keep a reference to the current
+            # item no longer on heap to be able to check
+            self._current_interval_item = item
 
             # if next item is scheduled in the future then break
             if item.next_ts > now:
@@ -364,7 +370,7 @@ class Clock(_ClockBase):
                         item.last_ts = item.next_ts - item.interval
             else:
                 # not an interval, so this item will not be rescheduled
-                item = None
+                self._current_interval_item = item = None
 
         if item is not None:
             heappush(interval_items, item)
