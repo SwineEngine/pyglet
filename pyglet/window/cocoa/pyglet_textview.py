@@ -25,9 +25,22 @@ class PygletTextView_Implementation(object):
         self.empty_string = CFSTR("")
         return self
 
+    @PygletTextView.method('B')
+    def acceptsFirstResponder(self):
+        print("First responder: textview")
+        return False
+
     @PygletTextView.method('v')
     def dealloc(self):
         self.empty_string.release()
+
+    @PygletTextView.method('v@')
+    def mouseDown_(self, nsevent):
+        print("text view mouseDown")
+
+    @PygletTextView.method('v@')
+    def mouseUp_(self, nsevent):
+        print("text view mouseUp")
 
     @PygletTextView.method('v@')
     def keyDown_(self, nsevent):

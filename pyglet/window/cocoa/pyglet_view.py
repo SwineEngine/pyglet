@@ -118,10 +118,21 @@ class PygletView_Implementation(object):
     
     @PygletView.method('B')
     def canBecomeKeyView(self):
+        print("Key view")
         return True
 
     @PygletView.method('B')
     def isOpaque(self):
+        return True
+
+    @PygletView.method('B')
+    def acceptsFirstResponder(self):
+        print("First responder: view")
+        return True
+
+    @PygletView.method('B@')
+    def acceptsFirstMouse_(self, nsevent):
+        print("First mouse")
         return True
 
     ## Event responders.
@@ -248,6 +259,7 @@ class PygletView_Implementation(object):
     
     @PygletView.method('v@')
     def mouseDown_(self, nsevent):
+        print("mouseDown_")
         x, y = getMousePosition(self, nsevent)
         buttons = mouse.LEFT
         modifiers = getModifiers(nsevent)
@@ -263,6 +275,7 @@ class PygletView_Implementation(object):
 
     @PygletView.method('v@')
     def mouseUp_(self, nsevent):
+        print("mouseUp_")
         x, y = getMousePosition(self, nsevent)
         buttons = mouse.LEFT
         modifiers = getModifiers(nsevent)
@@ -327,6 +340,14 @@ class PygletView_Implementation(object):
         if not self._window._is_mouse_exclusive:
             self._window.set_mouse_platform_visible()
         self._window.dispatch_event('on_mouse_leave', x, y)
+
+    @PygletView.method('v@')
+    def tabletPoint_(self, nsevent):
+        print("tabletPoint")
+
+    @PygletView.method('v@')
+    def tabletProximity_(self, nsevent):
+        print("tabletProximity")
 
     @PygletView.method('v@')
     def cursorUpdate_(self, nsevent):
