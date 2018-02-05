@@ -4,6 +4,14 @@ from pyglet.libs.darwin.cocoapy import *
 class PygletWindow_Implementation(object):
     PygletWindow = ObjCSubclass('NSWindow', 'PygletWindow')
 
+    @PygletWindow.method('v@')
+    def mouseDown_(self, nsevent):
+        print("Window mouseDown_")
+
+    @PygletWindow.method('v@')
+    def mouseUp_(self, nsevent):
+        print("Window mouseUp_")
+
     @PygletWindow.method('B')
     def canBecomeKeyWindow(self):
         return True
