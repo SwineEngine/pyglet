@@ -80,6 +80,7 @@ class KeyPressWindowEventTestCase(WindowEventsTestCase):
     mod_shift_keys = (key.LSHIFT, key.RSHIFT)
     mod_ctrl_keys = (key.LCTRL, key.RCTRL)
     mod_alt_keys = (key.LALT, key.RALT)
+    mod_option_keys = (key.LOPTION, key.ROPTION)
     mod_meta_keys = (key.LMETA, key.RMETA)
     mod_meta = key.MOD_SHIFT | key.MOD_ALT
 
@@ -139,11 +140,12 @@ class KeyPressWindowEventTestCase(WindowEventsTestCase):
         if self.chosen_modifiers & key.MOD_SHIFT:
             modifiers.append('<Shift>')
         if self.chosen_modifiers & key.MOD_ALT:
-            modifiers.append('<Alt>')
+            modifiers.append('<Alt/Option>')
         if self.chosen_modifiers & key.MOD_CTRL:
             modifiers.append('<Ctrl>')
 
-        self.question = """Please press and release:
+        self.question = """Please press and release the following combination of keys.
+Only use <Shift> if explicitly asked to do so.
 
 {} {}
 
@@ -155,6 +157,10 @@ Press Esc if test does not pass.""".format(' '.join(modifiers), key.symbol_strin
         modifier = self._get_modifier_for_key(symbol)
         if modifier == 0:
             return False
+
+        if modifier == key.MOD_OPTION:
+            # Ignore option key as it doubles with Alt
+            return True
 
         if not self.chosen_modifiers & modifier:
             self.fail_test('Unexpected modifier key "{}"'.format(key.symbol_string(symbol)))
@@ -168,6 +174,8 @@ Press Esc if test does not pass.""".format(' '.join(modifiers), key.symbol_strin
             return key.MOD_ALT
         elif symbol in self.mod_ctrl_keys:
             return key.MOD_CTRL
+        elif symbol in self.mod_option_keys:
+            return key.MOD_OPTION
         elif symbol in self.mod_meta_keys:
             return self.mod_meta
         else:
@@ -179,8 +187,20 @@ Press Esc if test does not pass.""".format(' '.join(modifiers), key.symbol_strin
             modifiers |= self._get_modifier_for_key(symbol)
         return modifiers
 
+    def _translate_option_modifier(self, modifiers):
+        """
+        On macOS the Alt key is also called the Option key. Key presses for both Alt and Option
+        are emitted, but the modifier list contains only one of them. Unify modifiers to
+        contain only Alt if Alt and/or Option is active.
+        """
+        if modifiers & key.MOD_OPTION or modifiers & key.MOD_ALT:
+            return (modifiers & ~key.MOD_OPTION) | key.MOD_ALT
+        else:
+            return modifiers
+
     def _check_modifiers_against_pressed_keys(self, modifiers):
-        modifiers_from_keys = self._get_modifiers_from_pressed_keys()
+        modifiers_from_keys = self._translate_option_modifier(self._get_modifiers_from_pressed_keys())
+        modifiers = self._translate_option_modifier(modifiers)
         if modifiers != modifiers_from_keys:
             self.fail_test('Received modifiers "{}" do not match pressed keys "{}"'.format(
                                 key.modifiers_string(modifiers),
@@ -243,7 +263,8 @@ class TextWindowEventsTest(WindowEventsTestCase):
         self._update_question()
 
     def _update_question(self):
-        self.question = """Please type:
+        self.question = """Please type the followin character exactly.
+Use <Shift> if needed.
 
 {}
 
@@ -269,6 +290,10 @@ class TextMotionWindowEventsTest(WindowEventsTestCase):
         self.chosen_key = None
         self.checks_passed = 0
 
+    def on_key_press(self, symbol, modifiers):
+        if symbol == key.X:
+            self._select_next_key()
+
     def on_text_motion(self, motion):
         if motion != self.chosen_key:
             self.fail_test('Expected "{}", received "{}"'.format(
@@ -290,6 +315,7 @@ class TextMotionWindowEventsTest(WindowEventsTestCase):
 {} ({})
 
 
+Press the X key if you do not have this motion key.
 Press Esc if test does not pass.""".format(key.motion_string(self.chosen_key),
                                            key.symbol_string(self.chosen_key))
         self._render_question()
@@ -312,6 +338,10 @@ class TextMotionSelectWindowEventsTest(WindowEventsTestCase):
         self.chosen_key = None
         self.checks_passed = 0
 
+    def on_key_press(self, symbol, modifiers):
+        if symbol == key.X:
+            self._select_next_key()
+
     def on_text_motion_select(self, motion):
         if motion != self.chosen_key:
             self.fail_test('Expected "{}", received "{}"'.format(
@@ -333,6 +363,7 @@ class TextMotionSelectWindowEventsTest(WindowEventsTestCase):
 {} ({})
 
 
+Press the X key if you do not have this motion key.
 Press Esc if test does not pass.""".format(key.motion_string(self.chosen_key),
                                            key.symbol_string(self.chosen_key))
         self._render_question()
@@ -590,6 +621,59 @@ class EVENT_MOUSEMOTION(InteractiveTestCase):
                 w.dispatch_events()
         finally:
             w.close()
+        self.user_verify('Pass test?', take_screenshot=False)
+
+
+@pytest.mark.requires_user_action
+class EVENT_MOUSEMOTION_EXCLUSIVE(InteractiveTestCase):
+    """Test that mouse motion event works correctly in exclusive mode.
+
+    Expected behaviour:
+        One window will be opened. The mouse cursor will disappear. Move the 
+        mouse and ensure the relative coordinates are correct.
+        - Absolute coordinates should be 0, 0.
+        - Relative coordinates should be positive when moving up and right.
+
+        Try also to use the mouse buttons and mouse wheel.
+        - Buttons 1, 2, 4 correspond to left, middle, right, respectively.
+        - Buttons press and release will display the button and key modifiers.
+        - Drag motions show relative movement, buttons pressed and key 
+          modifier.
+        - Mouse wheel show positive value for forward movements.
+
+        Close the window or press ESC to end the test.
+    """
+    def on_mouse_motion(self, x, y, dx, dy):
+        print('Mouse at (%f, %f); relative (%f, %f).' % \
+            (x, y, dx, dy))
+
+    def on_mouse_press(self, x, y, button, modifiers):
+        print('Mouse button %d pressed at %f,%f with %s' % \
+            (button, x, y, key.modifiers_string(modifiers)))
+
+    def on_mouse_release(self, x, y, button, modifiers):
+        print('Mouse button %d released at %f,%f with %s' % \
+            (button, x, y, key.modifiers_string(modifiers)))
+
+    def on_mouse_drag(self, x, y, dx, dy, button, modifiers):
+        print('Mouse dragged. Button %d pressed. dx, dy %f,%f with %s' % \
+            (button, dx, dy, key.modifiers_string(modifiers)))
+
+    def on_mouse_scroll(self, x, y, scrollx, scrolly):
+        print('Mouse scroll %f' % (scrolly))
+
+
+    def test_motion(self):
+        w = Window(200, 200)
+        try:
+            w.set_exclusive_mouse(True)
+            w.push_handlers(self)
+            while not w.has_exit:
+                w.dispatch_events()
+        finally:
+            w.set_exclusive_mouse(False)
+            w.close()
+
         self.user_verify('Pass test?', take_screenshot=False)
 
 
