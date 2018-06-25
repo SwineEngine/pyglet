@@ -117,6 +117,7 @@ class Button(Control):
             self.dispatch_event('on_press')
         self.charged = False
 
+
 Button.register_event_type('on_press')
 
 
@@ -250,11 +251,13 @@ class PlayerWindow(pyglet.window.Window):
             screen_button.height = self.GUI_BUTTON_HEIGHT
             screen_button.width = 80
             screen_button.text = 'Screen %d' % (i + 1)
-            screen_button.on_press = \
-                lambda screen=screen: self.set_fullscreen(True, screen)
+            screen_button.on_press = lambda screen=screen: self.set_fullscreen(True, screen)
             self.controls.append(screen_button)
             i += 1
             x += screen_button.width + self.GUI_PADDING
+
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
     def on_player_next_source(self):
         self.gui_update_state()
@@ -293,8 +296,8 @@ class PlayerWindow(pyglet.window.Window):
         return width, height
 
     def set_default_video_size(self):
-        '''Make the window size just big enough to show the current
-        video and the GUI.'''
+        """Make the window size just big enough to show the current
+        video and the GUI."""
         width = self.GUI_WIDTH
         height = self.GUI_HEIGHT
         video_width, video_height = self.get_video_size()
@@ -303,7 +306,7 @@ class PlayerWindow(pyglet.window.Window):
         self.set_size(int(width), int(height))
 
     def on_resize(self, width, height):
-        '''Position and size video image.'''
+        """Position and size video image."""
         super(PlayerWindow, self).on_resize(width, height)
         self.slider.width = width - self.GUI_PADDING * 2
 
@@ -323,8 +326,7 @@ class PlayerWindow(pyglet.window.Window):
             self.video_height = height
             self.video_width = height * video_aspect
         self.video_x = (width - self.video_width) / 2
-        self.video_y = (height - self.video_height) / 2 + \
-                        self.GUI_HEIGHT
+        self.video_y = (height - self.video_height) / 2 + self.GUI_HEIGHT
 
     def on_mouse_press(self, x, y, button, modifiers):
         for control in self.controls:
@@ -384,6 +386,7 @@ class PlayerWindow(pyglet.window.Window):
         if self._player_playing:
             self.player.play()
 
+
 def main(target, dbg_file, debug):
     set_logging_parameters(target, dbg_file, debug)
 
@@ -402,6 +405,7 @@ def main(target, dbg_file, debug):
 
     pyglet.app.run()
 
+
 def set_logging_parameters(target_file, dbg_file, debug):
     if not debug:
         bl.logger = None
@@ -419,15 +423,17 @@ def set_logging_parameters(target_file, dbg_file, debug):
     sample = os.path.basename(target_file)
     bl.logger.log("version", mp_events["version"])
     bl.logger.log("crash", sample)
-    bl.logger.save_log_entries_as_pickle()    
+    bl.logger.save_log_entries_as_pickle()
     bl.logger.clear()
     # start the real capture data
     bl.logger.log("version", mp_events["version"])
     bl.logger.log("mp.im", sample)
 
+
 def usage():
     print(__doc__)
     sys.exit(1)
+
 
 def sysargs_to_mainargs():
     """builds main args from sys.argv"""
@@ -448,6 +454,7 @@ def sysargs_to_mainargs():
     target_file = sys.argv[1]
     return target_file, dbg_file, debug
 
+
 if __name__ == '__main__':
-    target_file, dbg_file, debug = sysargs_to_mainargs() 
+    target_file, dbg_file, debug = sysargs_to_mainargs()
     main(target_file, dbg_file, debug)

@@ -12,7 +12,7 @@ pyglet.options['debug_media'] = _debug
 pyglet.options['debug_media_buffers'] = _debug
 
 import pyglet.app
-from pyglet.media.sources.procedural import Silence
+from pyglet.media.synthesis import Silence
 
 from .mock_player import MockPlayer
 
@@ -102,6 +102,7 @@ def test_create_destroy(driver):
 
 def test_create_audio_player(driver, player):
     source = Silence(1.)
+    import pdb; pdb.set_trace()
     audio_player = driver.create_audio_player(source, player)
     audio_player.delete()
 
