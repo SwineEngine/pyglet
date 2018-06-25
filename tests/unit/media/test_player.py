@@ -12,7 +12,7 @@ import pytest
 
 import pyglet
 from pyglet.media.player import Player, PlayerGroup
-from pyglet.media.sources.base import *
+from pyglet.media.codecs.base import *
 
 #pyglet.options['debug_media'] = True
 

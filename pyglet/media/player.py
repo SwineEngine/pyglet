@@ -36,12 +36,12 @@ from builtins import object
 # POSSIBILITY OF SUCH DAMAGE.
 # ----------------------------------------------------------------------------
 
-from collections import deque, abc
+from collections import deque
 
 import pyglet
 from pyglet.media import buffered_logger as bl
 from pyglet.media.drivers import get_audio_driver
-from pyglet.media.sources.base import Source
+from pyglet.media.codecs.base import Source
 
 # import cProfile
 
