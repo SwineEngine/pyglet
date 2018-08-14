@@ -1,15 +1,15 @@
 # ----------------------------------------------------------------------------
 # pyglet
-# Copyright (c) 2006-2008 Alex Holkner
+# Copyright (c) 2006-2018 Alex Holkner
 # All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions 
+# modification, are permitted provided that the following conditions
 # are met:
 #
 #  * Redistributions of source code must retain the above copyright
 #    notice, this list of conditions and the following disclaimer.
-#  * Redistributions in binary form must reproduce the above copyright 
+#  * Redistributions in binary form must reproduce the above copyright
 #    notice, this list of conditions and the following disclaimer in
 #    the documentation and/or other materials provided with the
 #    distribution.
@@ -137,7 +137,6 @@ __version__ = '$Id$'
 
 from io import open
 import re
-import warnings
 import weakref
 
 from ctypes import *
@@ -240,6 +239,30 @@ def color_as_bytes(color):
         if len(color) != 4:
             raise TypeError("color is expected to have 4 components")
         return bytes(color)
+
+
+def get_max_texture_size():
+    """Query the maximum texture size available"""
+    size = c_int()
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, size)
+    return size.value
+
+
+def _nearest_pow2(v):
+    # From http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
+    # Credit: Sean Anderson
+    v -= 1
+    v |= v >> 1
+    v |= v >> 2
+    v |= v >> 4
+    v |= v >> 8
+    v |= v >> 16
+    return v + 1
+
+
+def _is_pow2(v):
+    # http://graphics.stanford.edu/~seander/bithacks.html#DetermineIfPowerOf2
+    return (v & (v - 1)) == 0
 
 
 class ImagePattern(object):
@@ -658,11 +681,11 @@ class ImageData(AbstractImage):
         self._desired_format = fmt.upper()
         self._current_texture = None
 
-    def get_data(self, format, pitch):
+    def get_data(self, fmt=None, pitch=None):
         """Get the byte data of the image.
 
         :Parameters:
-            `format` : str
+            `fmt` : str
                 Format string of the return data.
             `pitch` : int
                 Number of bytes per row.  Negative values indicate a
@@ -672,15 +695,18 @@ class ImageData(AbstractImage):
 
         :rtype: sequence of bytes, or str
         """
-        if format == self._current_format and pitch == self._current_pitch:
-            return self._current_data
-        return self._convert(format, pitch)
+        fmt = fmt or self._desired_format
+        pitch = pitch or self._current_pitch
 
-    def set_data(self, format, pitch, data):
+        if fmt == self._current_format and pitch == self._current_pitch:
+            return self._current_data
+        return self._convert(fmt, pitch)
+
+    def set_data(self, fmt, pitch, data):
         """Set the byte data of the image.
 
         :Parameters:
-            `format` : str
+            `fmt` : str
                 Format string of the return data.
             `pitch` : int
                 Number of bytes per row.  Negative values indicate a
@@ -690,11 +716,11 @@ class ImageData(AbstractImage):
 
         .. versionadded:: 1.1
         """
-        self._current_format = format
+        self._current_format = fmt
         self._current_pitch = pitch
         self._current_data = data
         self._current_texture = None
-        self._current_mipmapped_texture = None
+        self._current_mipmap_texture = None
 
     def set_mipmap_image(self, level, image):
         """Set a mipmap image for a particular level.
@@ -812,12 +838,10 @@ class ImageData(AbstractImage):
                     image.blit_to_texture(texture.target, level,
                                           self.anchor_x, self.anchor_y, 0, internalformat)
                     # TODO: should set base and max mipmap level if some mipmaps are missing.
-        elif gl_info.have_version(1, 4):
+        else:
             glTexParameteri(texture.target, GL_GENERATE_MIPMAP, GL_TRUE)
             self.blit_to_texture(texture.target, texture.level,
                                  self.anchor_x, self.anchor_y, 0, internalformat)
-        else:
-            raise NotImplementedError('TODO: gluBuild2DMipmaps')
 
         self._current_mipmap_texture = texture
         return texture
@@ -1101,8 +1125,7 @@ class ImageDataRegion(ImageData):
             'y': self.y
         }
 
-    def _get_data(self):
-        # Crop the data first
+    def get_data(self, fmt=None, pitch=None):
         x1 = len(self._current_format) * self.x
         x2 = len(self._current_format) * (self.x + self.width)
 
@@ -1116,44 +1139,18 @@ class ImageDataRegion(ImageData):
         self.x = 0
         self.y = 0
 
-        return super(ImageDataRegion, self)._get_data()
+        fmt = fmt or self._desired_format
+        pitch = pitch or self._current_pitch
+        return super(ImageDataRegion, self).get_data(fmt, pitch)
 
-    def _set_data(self, data):
+    def set_data(self, fmt, pitch, data):
         self.x = 0
         self.y = 0
-        super(ImageDataRegion, self)._set_data(data)
-
-    @property
-    def data(self):
-        return self._get_data()
-
-    @data.setter
-    def data(self, data):
-        self._set_data(data)
-
-    def get_data(self, format, pitch):
-        x1 = len(self._current_format) * self.x
-        x2 = len(self._current_format) * (self.x + self.width)
-
-        self._ensure_string_data()
-        data = self._convert(self._current_format, abs(self._current_pitch))
-        rows = re.findall(asbytes('.') * abs(self._current_pitch), data,
-                          re.DOTALL)
-        rows = [row[x1:x2] for row in rows[self.y:self.y + self.height]]
-        self._current_data = asbytes('').join(rows)
-        self._current_pitch = self.width * len(self._current_format)
-        self._current_texture = None
-        self.x = 0
-        self.y = 0
-
-        return super(ImageDataRegion, self).get_data(format, pitch)
+        super(ImageDataRegion, self).set_data(fmt, pitch, data)
 
     def _apply_region_unpack(self):
         glPixelStorei(GL_UNPACK_SKIP_PIXELS, self.x)
         glPixelStorei(GL_UNPACK_SKIP_ROWS, self.y)
-
-    def _ensure_string_data(self):
-        super(ImageDataRegion, self)._ensure_string_data()
 
     def get_region(self, x, y, width, height):
         x += self.x
@@ -1167,7 +1164,7 @@ class CompressedImageData(AbstractImage):
     """
 
     _current_texture = None
-    _current_mipmapped_texture = None
+    _current_mipmap_texture = None
 
     def __init__(self, width, height, gl_format, data,
                  extension=None, decoder=None):
@@ -1233,8 +1230,7 @@ class CompressedImageData(AbstractImage):
         """
 
         if not self._have_extension():
-            raise ImageException('%s is required to decode %r' % \
-                                 (self.extension, self))
+            raise ImageException('%s is required to decode %r' % (self.extension, self))
 
     def get_texture(self, rectangle=False, force_rectangle=False):
         if force_rectangle:
@@ -1286,13 +1282,9 @@ class CompressedImageData(AbstractImage):
 
         glBindTexture(texture.target, texture.id)
 
-        glTexParameteri(texture.target, GL_TEXTURE_MIN_FILTER,
-                        GL_LINEAR_MIPMAP_LINEAR)
+        glTexParameteri(texture.target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
 
         if not self.mipmap_data:
-            if not gl_info.have_version(1, 4):
-                raise ImageException(
-                    'Require GL 1.4 to generate mipmaps for compressed textures')
             glTexParameteri(texture.target, GL_GENERATE_MIPMAP, GL_TRUE)
 
         glCompressedTexImage2DARB(texture.target, texture.level,
@@ -1333,23 +1325,6 @@ class CompressedImageData(AbstractImage):
                                          len(self.data), self.data)
 
 
-def _nearest_pow2(v):
-    # From http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
-    # Credit: Sean Anderson
-    v -= 1
-    v |= v >> 1
-    v |= v >> 2
-    v |= v >> 4
-    v |= v >> 8
-    v |= v >> 16
-    return v + 1
-
-
-def _is_pow2(v):
-    # http://graphics.stanford.edu/~seander/bithacks.html#DetermineIfPowerOf2
-    return (v & (v - 1)) == 0
-
-
 class Texture(AbstractImage):
     """An image loaded into video memory that can be efficiently drawn
     to the framebuffer.
@@ -1378,6 +1353,8 @@ class Texture(AbstractImage):
     level = 0
     images = 1
     x = y = z = 0
+    default_min_filter = GL_LINEAR
+    default_mag_filter = GL_LINEAR
 
     def __init__(self, width, height, target, id):
         super(Texture, self).__init__(width, height)
@@ -1393,7 +1370,7 @@ class Texture(AbstractImage):
 
     @classmethod
     def create(cls, width, height, internalformat=GL_RGBA,
-               rectangle=False, force_rectangle=False, min_filter=GL_LINEAR, mag_filter=GL_LINEAR):
+               rectangle=False, force_rectangle=False, min_filter=None, mag_filter=None):
         """Create an empty Texture.
 
         If `rectangle` is ``False`` or the appropriate driver extensions are
@@ -1426,6 +1403,8 @@ class Texture(AbstractImage):
         
         .. versionadded:: 1.1
         """
+        min_filter = min_filter or cls.default_min_filter
+        mag_filter = mag_filter or cls.default_mag_filter
         target = GL_TEXTURE_2D
         if rectangle or force_rectangle:
             if not force_rectangle and _is_pow2(width) and _is_pow2(height):
@@ -1520,6 +1499,8 @@ class Texture(AbstractImage):
                           width, 0., 0.,
                           width, height, 0.,
                           0., height, 0.)
+        min_filter = min_filter or cls.default_min_filter
+        mag_filter = mag_filter or cls.default_mag_filter
         id = GLuint()
         glGenTextures(1, byref(id))
         glBindTexture(target, id.value)

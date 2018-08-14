@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # pyglet
-# Copyright (c) 2006-2008 Alex Holkner
+# Copyright (c) 2006-2018 Alex Holkner
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -86,8 +86,7 @@ The default path is ``['.']``.  If you modify the path, you must call
 from future import standard_library
 
 standard_library.install_aliases()
-from builtins import object
-from past.builtins import basestring
+from builtins import object, str
 
 __docformat__ = 'restructuredtext'
 __version__ = '$Id: $'
@@ -318,7 +317,7 @@ class Loader(object):
         """
         if path is None:
             path = ['.']
-        if isinstance(path, basestring):
+        if isinstance(path, str):
             path = [path]
         self.path = list(path)
         if script_home is None:
@@ -501,7 +500,7 @@ class Loader(object):
         big), otherwise the bin (a list of TextureAtlas).
         """
         # Large images are not placed in an atlas
-        max_texture_size = pyglet.image.atlas.get_max_texture_size()
+        max_texture_size = pyglet.image.get_max_texture_size()
         max_size = min(1024, max_texture_size / 2)
         if width > max_size or height > max_size:
             return None
