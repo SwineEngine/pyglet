@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # pyglet
-# Copyright (c) 2006-2008 Alex Holkner
+# Copyright (c) 2006-2018 Alex Holkner
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -220,10 +220,11 @@ class PulseAudioContext(PulseAudioLockable):
         """Completely shut down pulseaudio client."""
         if self._pa_context is not None:
             assert _debug("PulseAudioContext.delete")
-            pa.pa_context_disconnect(self._pa_context)
+            if self.is_ready:
+                pa.pa_context_disconnect(self._pa_context)
 
-            while self.state is not None and not self.is_terminated:
-                self.wait()
+                while self.state is not None and not self.is_terminated:
+                    self.wait()
 
             self._disconnect_callbacks()
             pa.pa_context_unref(self._pa_context)
@@ -285,7 +286,6 @@ class PulseAudioContext(PulseAudioLockable):
         if self.is_failed:
             self.raise_error()
 
-
     def create_stream(self, audio_format):
         """
         Create a new audio stream.
@@ -317,6 +317,11 @@ class PulseAudioContext(PulseAudioLockable):
                 sample_spec.format = pa.PA_SAMPLE_S16LE
             else:
                 sample_spec.format = pa.PA_SAMPLE_S16BE
+        elif audio_format.sample_size == 24:
+            if sys.byteorder == 'little':
+                sample_spec.format = pa.PA_SAMPLE_S24LE
+            else:
+                sample_spec.format = pa.PA_SAMPLE_S24BE
         else:
             raise MediaException('Unsupported sample size')
         sample_spec.rate = audio_format.sample_rate

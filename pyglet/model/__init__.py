@@ -196,10 +196,10 @@ class Material(object):
     def __init__(self, name, diffuse, ambient, specular,
                  emission, shininess, opacity, texture_name=None):
         self.name = name
-        self.diffuse = diffuse
-        self.ambient = ambient
-        self.specular = specular
-        self.emission = emission
+        self.diffuse = (GLfloat * 4)(*(diffuse + [opacity]))
+        self.ambient = (GLfloat * 4)(*(ambient + [opacity]))
+        self.specular = (GLfloat * 4)(*(specular + [opacity]))
+        self.emission = (GLfloat * 4)(*(emission + [opacity]))
         self.shininess = shininess
         self.opacity = opacity
         self.texture_name = texture_name
@@ -210,34 +210,33 @@ class TexturedMaterialGroup(graphics.Group):
     def __init__(self, material, texture):
         super(TexturedMaterialGroup, self).__init__()
         self.material = material
-        self.diffuse = (GLfloat * 4)(*(material.diffuse + [material.opacity]))
-        self.ambient = (GLfloat * 4)(*(material.ambient + [material.opacity]))
-        self.specular = (GLfloat * 4)(*(material.specular + [material.opacity]))
-        self.emission = (GLfloat * 4)(*(material.emission + [material.opacity]))
-        self.shininess = material.shininess
         self.texture = texture
 
     def set_state(self, face=GL_FRONT_AND_BACK):
         glEnable(self.texture.target)
         glBindTexture(self.texture.target, self.texture.id)
-        glMaterialfv(face, GL_DIFFUSE, self.diffuse)
-        glMaterialfv(face, GL_AMBIENT, self.ambient)
-        glMaterialfv(face, GL_SPECULAR, self.specular)
-        glMaterialfv(face, GL_EMISSION, self.emission)
-        glMaterialf(face, GL_SHININESS, self.shininess)
+        material = self.material
+        glMaterialfv(face, GL_DIFFUSE, material.diffuse)
+        glMaterialfv(face, GL_AMBIENT, material.ambient)
+        glMaterialfv(face, GL_SPECULAR, material.specular)
+        glMaterialfv(face, GL_EMISSION, material.emission)
+        glMaterialf(face, GL_SHININESS, material.shininess)
+        glPushMatrix()
 
     def unset_state(self):
+        glPopMatrix()
         glDisable(self.texture.target)
         glDisable(GL_COLOR_MATERIAL)
 
     def __eq__(self, other):
+        material = self.material
         return (self.texture.id == other.texture.id and
                 self.texture.target == other.texture.target and
-                self.diffuse[:] == other.diffuse[:] and
-                self.ambient[:] == other.ambient[:] and
-                self.specular[:] == other.specular[:] and
-                self.emission[:] == other.emission[:] and
-                self.shininess == other.shininess)
+                material.diffuse[:] == other.material.diffuse[:] and
+                material.ambient[:] == other.material.ambient[:] and
+                material.specular[:] == other.material.specular[:] and
+                material.emission[:] == other.material.emission[:] and
+                material.shininess == other.material.shininess)
 
     def __hash__(self):
         return hash((self.texture.id, self.texture.target))
@@ -245,37 +244,47 @@ class TexturedMaterialGroup(graphics.Group):
 
 class MaterialGroup(graphics.Group):
 
-    def __init__(self, material):
+    def __init__(self, material, position=None):
         super(MaterialGroup, self).__init__()
         self.material = material
-        self.diffuse = (GLfloat * 4)(*(material.diffuse + [material.opacity]))
-        self.ambient = (GLfloat * 4)(*(material.ambient + [material.opacity]))
-        self.specular = (GLfloat * 4)(*(material.specular + [material.opacity]))
-        self.emission = (GLfloat * 4)(*(material.emission + [material.opacity]))
-        self.shininess = material.shininess
+
+        self.position = position or [0, 0, 0]
+
+        self.matrix = [1.0, 0.0, 0.0, 0.0,
+                       0.0, 1.0, 0.0, 0.0,
+                       0.0, 0.0, 1.0, 0.0,
+                       0.0, 0.0, 0.0, 1.0]
 
     def set_state(self, face=GL_FRONT_AND_BACK):
         glDisable(GL_TEXTURE_2D)
-        glMaterialfv(face, GL_DIFFUSE, self.diffuse)
-        glMaterialfv(face, GL_AMBIENT, self.ambient)
-        glMaterialfv(face, GL_SPECULAR, self.specular)
-        glMaterialfv(face, GL_EMISSION, self.emission)
-        glMaterialf(face, GL_SHININESS, self.shininess)
+        material = self.material
+        glMaterialfv(face, GL_DIFFUSE, material.diffuse)
+        glMaterialfv(face, GL_AMBIENT, material.ambient)
+        glMaterialfv(face, GL_SPECULAR, material.specular)
+        glMaterialfv(face, GL_EMISSION, material.emission)
+        glMaterialf(face, GL_SHININESS, material.shininess)
+
+        glPushMatrix()
+        # glTranslatef(*self.position)
+        glMultMatrixf(*self.matrix)
 
     def unset_state(self):
+        glPopMatrix()
         glDisable(GL_COLOR_MATERIAL)
 
     def __eq__(self, other):
+        material = self.material
         return (self.__class__ is other.__class__ and
-                self.diffuse[:] == other.diffuse[:] and
-                self.ambient[:] == other.ambient[:] and
-                self.specular[:] == other.specular[:] and
-                self.emission[:] == other.emission[:] and
-                self.shininess == other.shininess)
+                material.diffuse[:] == other.material.diffuse[:] and
+                material.ambient[:] == other.material.ambient[:] and
+                material.specular[:] == other.material.specular[:] and
+                material.emission[:] == other.material.emission[:] and
+                material.shininess == other.material.shininess)
 
     def __hash__(self):
-        return hash((tuple(self.diffuse) + tuple(self.ambient) +
-                     tuple(self.specular) + tuple(self.emission), self.shininess))
+        material = self.material
+        return hash((tuple(material.diffuse) + tuple(material.ambient) +
+                     tuple(material.specular) + tuple(material.emission), material.shininess))
 
 
 add_default_model_codecs()
